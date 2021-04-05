@@ -1,5 +1,6 @@
 /* eslint-disable quotes */
 const Sequelize = require("sequelize");
+const bcrypt = require("bcrypt");
 const { STRING } = Sequelize;
 const config = {
   logging: false,
@@ -21,6 +22,32 @@ const User = conn.define("user", {
   password: STRING,
 });
 
+const Note = conn.define("note", {
+  text: {
+    type: Sequelize.STRING,
+  },
+});
+
+User.beforeCreate((user, options) => {
+  return bcrypt
+    .hash(user.password, 10)
+    .then((hash) => {
+      user.password = hash;
+    })
+    .catch((err) => {
+      throw new Error();
+    });
+});
+
+/*
+  bcrypt.hash(user.password, 10, async (error, hash)=>{
+    try {
+      await user.password = hash;
+    } catch (error) {
+      console.log("Error in before create hook: ", error);
+    }
+  });*/
+
 User.byToken = async (token) => {
   try {
     const verifyGood = jwt.verify(token, SECRET_KEY);
@@ -28,7 +55,6 @@ User.byToken = async (token) => {
       const user = await User.findByPk(verifyGood.userId);
       return user;
     }
-
     const error = Error("bad credentials");
     error.status = 401;
     throw error;
@@ -40,19 +66,24 @@ User.byToken = async (token) => {
 };
 
 User.authenticate = async ({ username, password }) => {
-  const user = await User.findOne({
-    where: {
-      username,
-      password,
-    },
-  });
-  if (user) {
-    const token = jwt.sign({ userId: user.id }, SECRET_KEY);
-    return token;
+  try {
+    const hashedUser = await User.findOne({
+      where: {
+        username,
+      },
+    });
+    const correct = await bcrypt.compare(password, hashedUser.password);
+    if (correct) {
+      const token = jwt.sign({ userId: hashedUser.id }, SECRET_KEY);
+      console.log("Token value:", token);
+      return token;
+    } else {
+      console.log("Bad Credentials:", err);
+    }
+  } catch (error) {
+    error.status = 401;
+    throw error;
   }
-  const error = Error("bad credentials");
-  error.status = 401;
-  throw error;
 };
 
 const syncAndSeed = async () => {
@@ -65,6 +96,12 @@ const syncAndSeed = async () => {
   const [lucy, moe, larry] = await Promise.all(
     credentials.map((credential) => User.create(credential))
   );
+  const notes = [{ text: "hello" }, { text: "world" }, { text: "goodbye" }];
+  const [one, two, three] = await Promise.all(
+    notes.map((note) => Note.create(note))
+  );
+  await lucy.setNotes(one);
+  await moe.setNotes([two, three]);
   return {
     users: {
       lucy,
@@ -73,6 +110,9 @@ const syncAndSeed = async () => {
     },
   };
 };
+
+Note.belongsTo(User);
+User.hasMany(Note);
 
 module.exports = {
   syncAndSeed,

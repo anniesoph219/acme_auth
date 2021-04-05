@@ -24,6 +24,20 @@ app.get("/api/auth", async (req, res, next) => {
     next(ex);
   }
 });
+app.get("/api/users/:userId/notes", async (req, res, next) => {
+  try {
+    res.send(
+      await User.findOne({
+        where: {
+          id: req.params.userId,
+        },
+        include: [{ model: Note }],
+      })
+    );
+  } catch (e) {
+    next(e);
+  }
+});
 
 app.use((err, req, res, next) => {
   console.log(err);
